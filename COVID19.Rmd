@@ -1,0 +1,204 @@
+---
+title: "5301 Week 3"
+date: "2024-09-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(usmap)
+```
+
+For my COVID-19 analysis, I followed along with the professor's models and graphs and added 2 of my own graphs at the end as she said that it was alright to use her models in the project instructions. 
+
+To start, I opened and read the data so that we could begin to clean it.
+
+```{r, echo=TRUE}
+confirmed_us = read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv')
+confirmed_global = read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv')
+deaths_us = read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv')
+deaths_global = read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv')
+```
+From here, we cleaned each set of data so that it would be easier to read and process in our analysis. We both moved some labels and data and omitted some values that we will not be looking at. By doing this, the data becomes easier to use and analysis as we do not get overwhelmed by everything all at once.
+```{r, echo=TRUE}
+confirmed_global = confirmed_global %>% 
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(-c(Lat, Long))
+```
+
+
+```{r, echo=TRUE}
+deaths_global = deaths_global %>% 
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(-c(Lat, Long))
+```
+
+```{r, echo=TRUE}
+global = confirmed_global %>%
+  full_join(deaths_global) %>%
+  rename(Province_State = 'Province/State',
+         Country_Region = 'Country/Region') %>%
+  mutate(date = mdy(date))
+global = global %>% filter(cases>0)
+```
+
+```{r, echo=TRUE}
+confirmed_us = confirmed_us %>% 
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+```
+
+```{r, echo=TRUE}
+deaths_us = deaths_us %>% 
+  pivot_longer(cols = -(UID:Population),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+```
+
+```{r, echo=TRUE}
+us = confirmed_us %>%
+  full_join(deaths_us)
+```
+We then renamed and and combined some elements in the data sets so that they would be easier to compare and combine if we wanted.
+```{r, echo=TRUE}
+global = global %>%
+  unite("Combined_Key",
+        c(Province_State, Country_Region),
+        sep = ", ",
+        na.rm = TRUE,
+        remove = FALSE)
+```
+
+```{r, echo=TRUE}
+uid = read_csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/refs/heads/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv') %>%
+  select(-c(Lat, Long_, Combined_Key, code3, iso2, iso3, Admin2))
+global = global %>%
+  left_join(uid, by = c("Province_State", "Country_Region")) %>%
+  select(-c(UID, FIPS)) %>%
+  select(Province_State, Country_Region, date, cases, deaths, Population, Combined_Key)
+```
+We then used the US data (both cases and deaths) to create one data frame which represents all of the information we are interested in looking at in the analysis.
+```{r, echo=TRUE}
+US_by_state = us %>%
+  group_by(Province_State, Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(deaths_per_mill = deaths*1000000 / Population) %>%
+  select(Province_State, Country_Region, date, cases, deaths, deaths_per_mill, Population) %>%
+  ungroup()
+```
+
+```{r, echo=TRUE}
+US_totals = US_by_state %>%
+  group_by(Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(deaths_per_mill = deaths*1000000 / Population) %>%
+  select(Country_Region, date, cases, deaths, deaths_per_mill, Population) %>%
+  ungroup()
+```
+Using our combination of data sets, we can create a model of COVID-19 cases and deaths in the US. Looking at the data, which has been scaled by log10, we see a logarithmic shape. Because of this, we are able to hypothesis that COVID-19 had an exponential rate of spreading throughout the US. Furthermore, since the deaths have a similar shape, just with lower values, we can hypothesis that there is a linear relationship between cases and deaths as when cases increased, deaths followed the same progression. 
+```{r, echo=TRUE}
+US_totals %>%
+  filter(cases > 0) %>%
+  ggplot(aes(x = date, y = cases)) +
+  geom_line(aes(color = "cases")) +
+  geom_point(aes(color = "cases")) +
+  geom_line(aes(y = deaths, color = "deaths")) +
+  geom_point(aes(y = deaths, color = "deaths")) +
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+  labs(title = "COVID19 in the US", y = NULL)
+```
+Using the same model as before, we looked just at to see if it followed the same trends as the US population. Looking at the graphs, we can see that the shapes are similar, allowing us to hypothesize that COVID-19 spread was uniform between states and did not differ greatly in how it spread. However, we would need to look at all the states and their graphs to make this conclusion (which we did not do).
+```{r, echo=TRUE}
+state = "California"
+US_by_state %>%
+  filter(Province_State == state) %>%
+  filter(cases > 0) %>%
+  ggplot(aes(x = date, y = cases)) +
+  geom_line(aes(color = "cases")) +
+  geom_point(aes(color = "cases")) +
+  geom_line(aes(y = deaths, color = "deaths")) +
+  geom_point(aes(y = deaths, color = "deaths")) +
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+  labs(title = str_c("COVID19 in ", state), y = NULL)
+```
+
+```{r, echo=TRUE}
+US_by_state = US_by_state %>%
+  mutate(new_cases = cases - lag(cases), 
+         new_deaths = deaths - lag(deaths))
+US_totals = US_totals %>%
+  mutate(new_cases = cases - lag(cases), 
+         new_deaths = deaths - lag(deaths))
+```
+We then changed scale of cases and deaths by subtracting the lag (a shift of the time) to be able to look at new cases and new deaths rather than total deaths. This allowed us to see if there was changes in the number of new deaths and new cases over time. At the beginning, we can once again see the logarithmic shape, but as time went on, the values began to fluctuate greatly, meaning that the model does not represent the data as COVID-19 continued to spread.
+```{r, echo=TRUE}
+US_totals %>%
+  ggplot(aes(x = date, y = new_cases)) +
+  geom_line(aes(color = "new_cases")) +
+  geom_point(aes(color = "new_cases")) +
+  geom_line(aes(y = new_deaths, color = "new_deaths")) +
+  geom_point(aes(y = new_deaths, color = "new_deaths")) +
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) +
+  labs(title = "COVID19 in the US", y = NULL)
+```
+
+```{r, echo=TRUE}
+US_state_totals = US_by_state %>%
+  group_by(Province_State) %>%
+  summarize(deaths = max(deaths), cases = max(cases),
+            population = max(Population),
+            cases_per_thou = 1000* cases/ population,
+            deaths_per_thou = 1000* deaths / population) %>%
+  filter(cases >0, population > 0)
+```
+
+We then looked at the number of deaths and cases per thousand, allowing us to compare the data between states without having to worry about how the difference in population might affect the number of cases or deaths.
+```{r, echo=TRUE}
+US_state_totals %>%
+  slice_min(deaths_per_thou, n = 10)
+```
+
+```{r, echo=TRUE}
+mod = lm(deaths_per_thou ~ cases_per_thou, data = US_state_totals)
+```
+
+Using these totals, I created a heat map of deaths and cases in each of the States. Looking at the map, we are able to see the states which had the greatest number of cases and deaths per thousand. Using this visualization, we can tell that southern states were more affected per thousand by COVID than northern and western states. 
+```{r, echo=TRUE}
+cases_map = data.frame(
+  state = US_state_totals$Province_State,
+  cases = US_state_totals$cases_per_thou
+) 
+deaths_map = data.frame(
+  state = US_state_totals$Province_State,
+  deaths = US_state_totals$deaths_per_thou
+) 
+plot_usmap(regions = "states", data = cases_map, values = "cases", labels = TRUE) +
+  scale_fill_continuous(low = "white", high = "red", name = "Cases per Thousand People") +
+  theme(legend.position = "right")
+plot_usmap(regions = "states", data = deaths_map, values = "deaths", labels = TRUE) +
+  scale_fill_continuous(low = "white", high = "red", name = "Deaths Per Thousand People") +
+  theme(legend.position = "right")
+
+```
+
+## Bias
+A potential source of bias in the analysis has to do with the deaths and cases in the states. While we can somewhat normalize the data by finding the ratios of deaths and cases per thousand, we cannot say anything about what might causes the differences between the states. We would need to collect more data to understand why the differences exist. 
+
+Additionally, we applied the logarithmic function to the cases and deaths; however, we did not check how well this model fits the data. While it seems to fit, we would need to do additional analysis to ensure that this is the best model. 
