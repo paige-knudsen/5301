@@ -14,6 +14,8 @@ library(usmap)
 
 For my COVID-19 analysis, I followed along with the professor's models and graphs and added 2 of my own graphs at the end as she said that it was alright to use her models in the project instructions. 
 
+This is a data set from John Hopkins that tracked COVID cases and deaths throughout the world. It includes information about where and when each case and death occurred. 
+
 To start, I opened and read the data so that we could begin to clean it.
 
 ```{r, echo=TRUE}
@@ -202,3 +204,6 @@ plot_usmap(regions = "states", data = deaths_map, values = "deaths", labels = TR
 A potential source of bias in the analysis has to do with the deaths and cases in the states. While we can somewhat normalize the data by finding the ratios of deaths and cases per thousand, we cannot say anything about what might causes the differences between the states. We would need to collect more data to understand why the differences exist. 
 
 Additionally, we applied the logarithmic function to the cases and deaths; however, we did not check how well this model fits the data. While it seems to fit, we would need to do additional analysis to ensure that this is the best model. 
+
+## Conclusion
+In conclusion, we can see that there is many models and graphs that can be created with this data set (and this is just the beginning). In the future, we could do more analysis with the global data and see which countries where the most affected by COVID.
